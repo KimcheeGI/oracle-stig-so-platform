@@ -1,0 +1,37 @@
+---
+# Deploy Security Onion nodes (assumes target hosts are Ubuntu 20.04/22.04)
+- name: Deploy Security Onion
+  hosts: securityonion
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Ensure apt transport packages
+      apt:
+        name: [apt-transport-https, ca-certificates]
+        state: present
+        update_cache: yes
+
+    - name: Upload offline apt bundle if present
+      copy:
+        src: /opt/offline-assets/so-apt-repo/
+        dest: /var/local/so-apt-repo/
+        remote_src: yes
+      when: lookup('file', '/opt/offline-assets/so-apt-repo', errors='ignore') is not failed
+
+    - name: Add local apt repo (offline mode)
+      apt_repository:
+        repo: 'deb [trusted=yes] file:/var/local/so-apt-repo ./'
+      when: lookup('file', '/var/local/so-apt-repo/Packages', errors='ignore') is not failed
+
+    - name: Install Security Onion meta package
+      apt:
+        name: securityonion
+        state: present
+        update_cache: yes
+
+    - name: Run unattended SO setup (example)
+      shell: |
+        so-setup --batch --interface=eth0 --role=standalone --admin-user=soadmin --admin-pass='ChangeMe!'
+      args:
+        warn: false

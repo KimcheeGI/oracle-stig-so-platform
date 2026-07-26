@@ -1,0 +1,9 @@
+---
+- name: Run STIG roles (dry-run)
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Invoke stig_manager role
+      import_role:
+        name: stig_manager

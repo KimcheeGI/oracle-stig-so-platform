@@ -1,0 +1,52 @@
+---
+# Copy bundled roles into controller and run evaluate-stig / stig-manager roles if present
+
+- name: Ensure target roles directory exists
+  file:
+    path: "{{ stig_manager_roles_dest }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Check for bundled roles in offline assets
+  stat:
+    path: "{{ stig_manager_roles_src }}"
+  register: bundled_roles
+
+- name: Copy bundled roles into system roles path
+  copy:
+    src: "{{ stig_manager_roles_src }}/"
+    dest: "{{ stig_manager_roles_dest }}/"
+    owner: root
+    group: root
+    mode: '0755'
+    remote_src: yes
+    recurse: yes
+  when: bundled_roles.stat.exists
+
+- name: Find installed role directories
+  find:
+    paths: "{{ stig_manager_roles_dest }}"
+    file_type: directory
+    depth: 1
+  register: installed_roles
+
+- name: Set flags for evaluate_stig and stig_manager presence
+  set_fact:
+    have_evaluate: "{{ 'evaluate-stig' in (installed_roles.files | map(attribute='path') | map('basename') | list) or 'daviee.evaluate-stig' in (installed_roles.files | map(attribute='path') | map('basename') | list) }}"
+    have_stig_manager: "{{ 'stig-manager' in (installed_roles.files | map(attribute='path') | map('basename') | list) }}"
+
+- name: Debug found roles
+  debug:
+    msg: "evaluate-stig present={{ have_evaluate }}, stig-manager present={{ have_stig_manager }}"
+
+- name: Run evaluate-stig role if present and enabled
+  import_role:
+    name: "evaluate-stig"
+  when: stig_manager_run_evaluate and have_evaluate
+
+- name: Run stig-manager role if present
+  import_role:
+    name: "stig-manager"
+  when: have_stig_manager

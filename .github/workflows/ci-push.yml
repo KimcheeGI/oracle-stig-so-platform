@@ -1,0 +1,44 @@
+name: CI Push to Remote Repo
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  push:
+    name: Commit and push to remote
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Optional: run build or packaging scripts
+        run: |
+          # Add any build or packaging steps here, for example:
+          # bash scripts/download_offline_assets.sh
+          echo "No build steps configured"
+
+      - name: Commit changes
+        run: |
+          git add --all
+          git commit -m "CI: commit built artifacts [skip ci]" || echo "No changes to commit"
+
+      - name: Push to target remote
+        if: ${{ secrets.PUSH_TOKEN && secrets.TARGET_REPO && secrets.TARGET_BRANCH }}
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+        run: |
+          git remote add target https://x-access-token:${PUSH_TOKEN}@github.com/${{ secrets.TARGET_REPO }}
+          git push target HEAD:refs/heads/${{ secrets.TARGET_BRANCH }} --follow-tags
+
+      - name: Fail if secrets not configured
+        if: ${{ !secrets.PUSH_TOKEN || !secrets.TARGET_REPO || !secrets.TARGET_BRANCH }}
+        run: |
+          echo "Required secrets (PUSH_TOKEN, TARGET_REPO, TARGET_BRANCH) are not configured." >&2
+          exit 1

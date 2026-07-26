@@ -1,0 +1,241 @@
+# Ansible playbook: configure Oracle Linux as Ansible controller (hardened)
+---
+name: Configure Oracle Linux Ansible controller
+hosts: localhost
+connection: local
+gather_facts: yes
+vars_files:
+  - vars.yml
+tasks:
+  - name: Ensure required packages
+    package:
+      name:
+        - python3
+        - python3-pip
+        - git
+        - unzip
+      state: present
+
+  - name: Ensure pip packages
+    pip:
+      name:
+        - ansible-core
+        - ansible
+      executable: pip3
+
+  - name: Create ansible control user
+    user:
+      name: "{{ controller_user }}"
+      groups: wheel
+      createhome: yes
+      shell: /bin/bash
+
+  - name: Install Ansible Galaxy roles from requirements
+    command: ansible-galaxy install -r requirements.yml
+    args:
+      chdir: "{{ playbook_dir }}"
+
+  - name: Import offline asset bundle (if present)
+    block:
+      - name: Ensure offline folder exists
+        file:
+          path: /opt/offline-assets
+          state: directory
+
+      - name: Unpack offline bundle
+        unarchive:
+          src: /opt/offline-assets/assets.tar.gz
+          dest: /opt/offline-assets/
+          remote_src: yes
+    when: "lookup('file', '/opt/offline-assets/assets.tar.gz', errors='ignore') is not failed"
+
+  - name: Set controller IP fact
+    set_fact:
+      controller_ip: "{{ ansible_default_ipv4.address }}"
+
+  - name: Install packages for hardened HTTP server and SELinux management
+    package:
+      name:
+        - nginx
+        - httpd-tools
+        - openssl
+        - policycoreutils-python-utils
+      state: present
+
+  - name: Ensure ssl directories exist
+    file:
+      path: "{{ item }}"
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+    loop:
+      - /etc/pki/tls/certs
+      - /etc/pki/tls/private
+
+  - name: Check for provided SSL certs in offline assets
+    stat:
+      path: /opt/offline-assets/ssl/server.crt
+    register: provided_crt
+
+  - name: Check for provided SSL key in offline assets
+    stat:
+      path: /opt/offline-assets/ssl/server.key
+    register: provided_key
+
+  - name: Copy provided SSL cert and key if present
+    copy:
+      src: /opt/offline-assets/ssl/server.crt
+      dest: /etc/pki/tls/certs/offline.crt
+      owner: root
+      group: root
+      mode: '0644'
+    when: provided_crt.stat.exists
+
+  - name: Copy provided SSL key if present
+    copy:
+      src: /opt/offline-assets/ssl/server.key
+      dest: /etc/pki/tls/private/offline.key
+      owner: root
+      group: root
+      mode: '0600'
+    when: provided_key.stat.exists
+
+  - name: Generate self-signed cert when none provided
+    command: >-
+      openssl req -x509 -nodes -days 365 -newkey rsa:2048
+      -keyout /etc/pki/tls/private/offline.key
+      -out /etc/pki/tls/certs/offline.crt
+      -subj "/CN={{ controller_ip }}"
+    args:
+      creates: /etc/pki/tls/certs/offline.crt
+    when: not (provided_crt.stat.exists and provided_key.stat.exists)
+
+  - name: Create htpasswd for offline repo access
+    command: htpasswd -b -c /etc/nginx/.htpasswd "{{ offline_repo_user }}" "{{ offline_repo_pass }}"
+    args:
+      creates: /etc/nginx/.htpasswd
+
+  - name: Deploy nginx configuration for offline assets
+    template:
+      src: templates/nginx_offline.conf.j2
+      dest: /etc/nginx/conf.d/offline.conf
+      owner: root
+      group: root
+      mode: '0644'
+    notify: reload nginx
+
+  - name: Ensure SELinux fcontext for offline assets
+    command: semanage fcontext -a -t httpd_sys_content_t "/opt/offline-assets(/.*)?"
+    ignore_errors: yes
+
+  - name: Restore SELinux context for offline assets
+    command: restorecon -R -v /opt/offline-assets
+    when: lookup('file', '/opt/offline-assets', errors='ignore') is not failed
+
+  - name: Allow http/https through firewalld if present
+    firewalld:
+      service: https
+      permanent: yes
+      state: enabled
+    ignore_errors: yes
+
+  - name: Ensure nginx is enabled and running
+    systemd:
+      name: nginx
+      enabled: yes
+      state: started
+
+  - name: Disable legacy python HTTP service if present
+    systemd:
+      name: offline-http.service
+      enabled: no
+      state: stopped
+    ignore_errors: yes
+
+  - name: Configure local YUM repo if present in offline assets
+    block:
+      - name: Check for yum repo folder
+        stat:
+          path: /opt/offline-assets/yum
+        register: yum_repo
+
+      - name: Write YUM repo file
+        copy:
+          dest: /etc/yum.repos.d/local-offline.repo
+          content: |
+            [local-offline]
+            name=Local Offline Repo
+            baseurl=https://{{ controller_ip }}/yum/
+            enabled=1
+            gpgcheck=0
+        when: yum_repo.stat.exists
+
+  - name: Configure local APT repo if present in offline assets
+    block:
+      - name: Check for so apt repo folder
+        stat:
+          path: /opt/offline-assets/so-apt-repo
+        register: so_repo
+
+      - name: Add local APT repository
+        apt_repository:
+          repo: 'deb [trusted=yes] https://{{ controller_ip }}/so-apt-repo ./'
+        when: so_repo.stat.exists
+
+  - name: Check for ansible-vault bundle
+    stat:
+      path: /opt/offline-assets/vault/vault.yml
+    register: vault_bundle
+
+  - name: Copy vault file to /etc/ansible if present
+    copy:
+      src: /opt/offline-assets/vault/vault.yml
+      dest: /etc/ansible/vault.yml
+      owner: root
+      group: root
+      mode: '0600'
+    when: vault_bundle.stat.exists
+
+  - name: Copy vault password file if present
+    copy:
+      src: /opt/offline-assets/vault/.vault_pass
+      dest: /etc/ansible/.vault_pass
+      owner: root
+      group: root
+      mode: '0600'
+    when: lookup('file', '/opt/offline-assets/vault/.vault_pass', errors='ignore') is not failed
+
+  - name: Write minimal ansible.cfg to use vault password file
+    copy:
+      dest: /etc/ansible/ansible.cfg
+      content: |
+        [defaults]
+        vault_password_file = /etc/ansible/.vault_pass
+      owner: root
+      group: root
+      mode: '0644'
+    when: vault_bundle.stat.exists or lookup('file', '/opt/offline-assets/vault/.vault_pass', errors='ignore') is not failed
+
+  - name: Include vault variables if vault was copied
+    include_vars:
+      file: /etc/ansible/vault.yml
+    when: vault_bundle.stat.exists
+
+  - name: Run stig_manager role to install and execute STIG roles from bundle
+    import_role:
+      name: stig_manager
+    when: lookup('file', '/opt/offline-assets/roles', errors='ignore') is not failed
+
+handlers:
+  - name: reload nginx
+    service:
+      name: nginx
+      state: reloaded
+
+  - name: reload systemd
+    command: systemctl daemon-reload
+
+    - name: Provide next-step note
+      debug:
+        msg: "Controller configured. Run `ansible-playbook securityonion.yml -i inventory` to deploy Security Onion."

@@ -1,0 +1,4 @@
+- src: daviee.evaluate-stig
+  version: "~> 1.0"
+- src: stig-manager
+  name: stig-manager

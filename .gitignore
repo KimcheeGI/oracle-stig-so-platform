@@ -1,0 +1,15 @@
+# Ignore offline assets and large build artifacts
+/offline-assets/
+/packer/box_cache/
+*.ova
+*.ovf
+*.tar.gz
+
+# Ansible vault password and other secrets (do not commit)
+/ansible/.vault_pass
+/ansible/vault.yml
+
+# Editor and system files
+.DS_Store
+*.swp
+.vscode/

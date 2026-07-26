@@ -1,0 +1,4 @@
+---
+stig_manager_run_evaluate: true
+stig_manager_roles_src: /opt/offline-assets/roles
+stig_manager_roles_dest: /etc/ansible/roles

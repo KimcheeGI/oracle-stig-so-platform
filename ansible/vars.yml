@@ -1,0 +1,8 @@
+---
+---
+controller_user: ansible
+offline_bundle: /opt/offline-assets/assets.tar.gz
+
+# Credentials for accessing the offline repo served by nginx
+offline_repo_user: repouser
+offline_repo_pass: RepoPass123

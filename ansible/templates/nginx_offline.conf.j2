@@ -1,0 +1,18 @@
+server {
+    listen       443 ssl;
+    server_name  _;
+
+    ssl_certificate /etc/pki/tls/certs/offline.crt;
+    ssl_certificate_key /etc/pki/tls/private/offline.key;
+
+    access_log /var/log/nginx/offline.access.log;
+    error_log /var/log/nginx/offline.error.log;
+
+    location / {
+        auth_basic "Restricted";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        root /opt/offline-assets;
+        autoindex on;
+        try_files $uri $uri/ =404;
+    }
+}
