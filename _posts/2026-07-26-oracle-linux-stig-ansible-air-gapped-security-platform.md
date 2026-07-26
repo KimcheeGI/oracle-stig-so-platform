@@ -1,13 +1,14 @@
 ---
 layout: post
-title: "Oracle Linux, Ansible, and STIG Automation for Air-Gapped Security Operations"
+title: "Oracle Linux STIG Automation for Air-Gapped Security Operations"
 subtitle: "A practical architecture for enterprise hardening, compliance, and offline monitoring"
 date: 2026-07-26
 author: "Charles"
 tags: [oracle-linux, ansible, stig, security, compliance, devsecops, air-gapped, securityonion]
+image: /assets/images/air-gapped-stig-banner.svg
 ---
 
-# Oracle Linux, Ansible, and STIG Automation for Air-Gapped Security Operations
+# Oracle Linux STIG Automation for Air-Gapped Security Operations
 
 Security and compliance leadership increasingly depends on the ability to operationalize control frameworks at scale while maintaining governance, auditability, and resilience. In environments where internet access is restricted or deliberately disconnected, this challenge becomes even more significant.
 
