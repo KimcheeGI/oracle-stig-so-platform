@@ -1,3 +1,6 @@
+# Packer secrets - never commit
+packer/secrets.pkrvars.hcl
+
 # Ignore offline assets and large build artifacts
 /offline-assets/
 /packer/box_cache/

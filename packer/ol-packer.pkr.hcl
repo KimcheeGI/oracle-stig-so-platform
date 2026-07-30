@@ -12,12 +12,18 @@ variable "iso_path" {
   default = "C:/ISOs/OracleLinux-R9-U8-x86_64-dvd.iso"
 }
 
+variable "vm_root_password" {
+  type      = string
+  sensitive = true
+  # Set in secrets.pkrvars.hcl (gitignored) - never hardcode here
+}
+
 source "vmware-iso" "oracle_linux" {
   iso_url              = var.iso_path
   iso_checksum         = "none"
   communicator         = "ssh"
   ssh_username         = "root"
-  ssh_password         = "CyberSecurity123!"
+  ssh_password         = var.vm_root_password
   ssh_wait_timeout     = "30m"
   shutdown_command     = "shutdown -h now"
   vm_name              = "ol-ansible-controller"
@@ -40,8 +46,12 @@ source "vmware-iso" "oracle_linux" {
     " inst.ks=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ks.cfg inst.text<enter><wait>"
   ]
   
-  # Enable HTTP server for kickstart
-  http_directory       = "c:/Scripts/oracle-stig-so-platform/packer"
+  # Render kickstart with variable substitution (password injected at build time)
+  http_content = {
+    "/ks.cfg" = templatefile("${path.root}/ks.cfg", {
+      vm_root_password = var.vm_root_password
+    })
+  }
   http_port_min        = 8000
   http_port_max        = 9000
   
