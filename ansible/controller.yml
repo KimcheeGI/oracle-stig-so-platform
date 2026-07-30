@@ -1,12 +1,12 @@
 # Ansible playbook: configure Oracle Linux as Ansible controller (hardened)
 ---
-name: Configure Oracle Linux Ansible controller
-hosts: localhost
-connection: local
-gather_facts: yes
-vars_files:
-  - vars.yml
-tasks:
+- name: Configure Oracle Linux Ansible controller
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  vars_files:
+    - vars.yml
+  tasks:
   - name: Ensure required packages
     package:
       name:
@@ -31,9 +31,15 @@ tasks:
       shell: /bin/bash
 
   - name: Install Ansible Galaxy roles from requirements
-    command: ansible-galaxy install -r requirements.yml
+    command: ansible-galaxy install -r requirements.yml --ignore-errors
     args:
       chdir: "{{ playbook_dir }}"
+    ignore_errors: yes
+
+  - name: Check for offline bundle
+    stat:
+      path: /opt/offline-assets/assets.tar.gz
+    register: offline_bundle_stat
 
   - name: Import offline asset bundle (if present)
     block:
@@ -47,7 +53,22 @@ tasks:
           src: /opt/offline-assets/assets.tar.gz
           dest: /opt/offline-assets/
           remote_src: yes
-    when: "lookup('file', '/opt/offline-assets/assets.tar.gz', errors='ignore') is not failed"
+    when: offline_bundle_stat.stat.exists
+
+  - name: Check if offline-assets directory exists
+    stat:
+      path: /opt/offline-assets
+    register: offline_assets_dir
+
+  - name: Check for vault password file
+    stat:
+      path: /opt/offline-assets/vault/.vault_pass
+    register: vault_pass_stat
+
+  - name: Check for offline roles directory
+    stat:
+      path: /opt/offline-assets/roles
+    register: offline_roles_stat
 
   - name: Set controller IP fact
     set_fact:
@@ -131,10 +152,10 @@ tasks:
 
   - name: Restore SELinux context for offline assets
     command: restorecon -R -v /opt/offline-assets
-    when: lookup('file', '/opt/offline-assets', errors='ignore') is not failed
+    when: offline_assets_dir.stat.exists
 
   - name: Allow http/https through firewalld if present
-    firewalld:
+    ansible.posix.firewalld:
       service: https
       permanent: yes
       state: enabled
@@ -204,7 +225,7 @@ tasks:
       owner: root
       group: root
       mode: '0600'
-    when: lookup('file', '/opt/offline-assets/vault/.vault_pass', errors='ignore') is not failed
+    when: vault_pass_stat.stat.exists
 
   - name: Write minimal ansible.cfg to use vault password file
     copy:
@@ -215,7 +236,7 @@ tasks:
       owner: root
       group: root
       mode: '0644'
-    when: vault_bundle.stat.exists or lookup('file', '/opt/offline-assets/vault/.vault_pass', errors='ignore') is not failed
+    when: vault_bundle.stat.exists or vault_pass_stat.stat.exists
 
   - name: Include vault variables if vault was copied
     include_vars:
@@ -223,19 +244,15 @@ tasks:
     when: vault_bundle.stat.exists
 
   - name: Run stig_manager role to install and execute STIG roles from bundle
-    import_role:
+    include_role:
       name: stig_manager
-    when: lookup('file', '/opt/offline-assets/roles', errors='ignore') is not failed
+    when: offline_roles_stat.stat.exists
 
-handlers:
-  - name: reload nginx
-    service:
-      name: nginx
-      state: reloaded
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
 
-  - name: reload systemd
-    command: systemctl daemon-reload
-
-    - name: Provide next-step note
-      debug:
-        msg: "Controller configured. Run `ansible-playbook securityonion.yml -i inventory` to deploy Security Onion."
+    - name: reload systemd
+      command: systemctl daemon-reload

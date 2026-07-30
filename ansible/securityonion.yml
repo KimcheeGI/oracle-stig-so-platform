@@ -6,6 +6,16 @@
   vars_files:
     - vars.yml
   tasks:
+    - name: Check for offline apt bundle
+      stat:
+        path: /opt/offline-assets/so-apt-repo
+      register: so_apt_bundle
+
+    - name: Check for local apt repo packages
+      stat:
+        path: /var/local/so-apt-repo/Packages
+      register: so_apt_packages
+
     - name: Ensure apt transport packages
       apt:
         name: [apt-transport-https, ca-certificates]
@@ -17,12 +27,12 @@
         src: /opt/offline-assets/so-apt-repo/
         dest: /var/local/so-apt-repo/
         remote_src: yes
-      when: lookup('file', '/opt/offline-assets/so-apt-repo', errors='ignore') is not failed
+      when: so_apt_bundle.stat.exists
 
     - name: Add local apt repo (offline mode)
       apt_repository:
         repo: 'deb [trusted=yes] file:/var/local/so-apt-repo ./'
-      when: lookup('file', '/var/local/so-apt-repo/Packages', errors='ignore') is not failed
+      when: so_apt_packages.stat.exists
 
     - name: Install Security Onion meta package
       apt:

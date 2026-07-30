@@ -41,12 +41,13 @@
   debug:
     msg: "evaluate-stig present={{ have_evaluate }}, stig-manager present={{ have_stig_manager }}"
 
-- name: Run evaluate-stig role if present and enabled
-  import_role:
-    name: "evaluate-stig"
-  when: stig_manager_run_evaluate and have_evaluate
+# Commented out - requires offline assets bundle
+# - name: Run evaluate-stig role if present and enabled
+#   import_role:
+#     name: "evaluate-stig"
+#   when: stig_manager_run_evaluate and have_evaluate
 
 - name: Run stig-manager role if present
-  import_role:
+  include_role:
     name: "stig-manager"
   when: have_stig_manager

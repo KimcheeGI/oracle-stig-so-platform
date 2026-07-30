@@ -1,5 +1,4 @@
 ---
----
 controller_user: ansible
 offline_bundle: /opt/offline-assets/assets.tar.gz
 
